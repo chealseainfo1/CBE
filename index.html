@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Result Merger</title>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 40px; }
+    .box { margin-bottom: 20px; }
+    button { padding: 10px 15px; cursor: pointer; }
+  </style>
+</head>
+<body>
+
+<h2>Student Result Merger</h2>
+
+<div class="box">
+  <label>Upload Test Score File (CSV/XLSX):</label><br/>
+  <input type="file" id="testFile" accept=".csv,.xlsx,.xls" />
+</div>
+
+<div class="box">
+  <label>Upload Exam Score File (CSV/XLSX):</label><br/>
+  <input type="file" id="examFile" accept=".csv,.xlsx,.xls" />
+</div>
+
+<button onclick="mergeResults()">Merge & Download</button>
+
+<script>
+let testData = [];
+let examData = [];
+
+document.getElementById("testFile").addEventListener("change", e => handleFile(e, "test"));
+document.getElementById("examFile").addEventListener("change", e => handleFile(e, "exam"));
+
+function handleFile(event, type) {
+  const file = event.target.files[0];
+  const reader = new FileReader();
+
+  reader.onload = function(e) {
+    const data = new Uint8Array(e.target.result);
+    const workbook = XLSX.read(data, { type: "array" });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const json = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+
+    if (type === "test") testData = json;
+    if (type === "exam") examData = json;
+  };
+
+  reader.readAsArrayBuffer(file);
+}
+
+function normalizeKey(row) {
+  return row["matric number"] || row["Matric Number"] || row["matric"] || row["Matric"];
+}
+
+function mergeResults() {
+  const map = new Map();
+
+  testData.forEach(r => {
+    const key = normalizeKey(r);
+    if (!map.has(key)) map.set(key, {});
+    map.get(key).serial = r["serial number"] || r["Serial Number"];
+    map.get(key).matric = key;
+    map.get(key).test = r["test score"] || r["Test Score"];
+  });
+
+  examData.forEach(r => {
+    const key = normalizeKey(r);
+    if (!map.has(key)) map.set(key, {});
+    map.get(key).serial = map.get(key).serial || r["serial number"] || r["Serial Number"];
+    map.get(key).matric = key;
+    map.get(key).exam = r["exam score"] || r["Exam Score"];
+  });
+
+  const output = Array.from(map.values());
+
+  const worksheet = XLSX.utils.json_to_sheet(output);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Results");
+
+  XLSX.writeFile(workbook, "merged_results.xlsx");
+}
+</script>
+
+</body>
+</html>
