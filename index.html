@@ -1,3 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Result Merger</title>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 40px;
+    }
+    .box {
+      margin-bottom: 15px;
+    }
+    button {
+      padding: 10px 15px;
+      margin-right: 10px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+
+<body>
+
+<h2>Student Result Merger</h2>
+
+<div class="box">
+  <label>Upload Test Score File (CSV/XLSX):</label><br>
+  <input type="file" id="testFile" accept=".csv,.xlsx,.xls">
+</div>
+
+<div class="box">
+  <label>Upload Exam Score File (CSV/XLSX):</label><br>
+  <input type="file" id="examFile" accept=".csv,.xlsx,.xls">
+</div>
+
+<div class="box">
+  <button onclick="mergeResults()">Merge & Download</button>
+  <button onclick="clearFiles()">Clear</button>
+</div>
+
 <script>
 let testData = [];
 let examData = [];
@@ -7,6 +49,8 @@ document.getElementById("examFile").addEventListener("change", e => handleFile(e
 
 function handleFile(event, type) {
   const file = event.target.files[0];
+  if (!file) return;
+
   const reader = new FileReader();
 
   reader.onload = function(e) {
@@ -22,84 +66,109 @@ function handleFile(event, type) {
   reader.readAsArrayBuffer(file);
 }
 
-function normalizeKey(row) {
-  const key = row["matric number"] || row["Matric Number"] || row["matric"] || row["Matric"];
+function normalizeMatric(row) {
+  const key =
+    row["matric number"] ||
+    row["Matric Number"] ||
+    row["matric"] ||
+    row["Matric"];
+
   return key ? String(key).trim() : "";
 }
 
-function validateMatricNumbers(testArr, examArr) {
+function validateData(testArr, examArr) {
   const issues = [];
-
   const testSet = new Set();
   const examSet = new Set();
 
   testArr.forEach(r => {
-    const k = normalizeKey(r);
-    if (!k) issues.push("Empty matric number found in TEST file");
+    const k = normalizeMatric(r);
+    if (!k) issues.push("Empty matric number in TEST file");
     if (testSet.has(k)) issues.push("Duplicate matric in TEST: " + k);
     testSet.add(k);
   });
 
   examArr.forEach(r => {
-    const k = normalizeKey(r);
-    if (!k) issues.push("Empty matric number found in EXAM file");
+    const k = normalizeMatric(r);
+    if (!k) issues.push("Empty matric number in EXAM file");
     if (examSet.has(k)) issues.push("Duplicate matric in EXAM: " + k);
     examSet.add(k);
   });
 
-  // cross-check missing entries
   testSet.forEach(k => {
-    if (!examSet.has(k)) issues.push("Missing in EXAM file: " + k);
+    if (!examSet.has(k)) issues.push("Missing in EXAM: " + k);
   });
 
   examSet.forEach(k => {
-    if (!testSet.has(k)) issues.push("Missing in TEST file: " + k);
+    if (!testSet.has(k)) issues.push("Missing in TEST: " + k);
   });
 
   return issues;
 }
 
 function mergeResults() {
-  const issues = validateMatricNumbers(testData, examData);
+  const issues = validateData(testData, examData);
 
   if (issues.length > 0) {
-    alert("Validation issues found:\n\n" + issues.join("\n"));
+    alert("Validation Issues:\n\n" + issues.join("\n"));
     if (!confirm("Continue merging anyway?")) return;
   }
 
   const map = new Map();
 
   testData.forEach(r => {
-    const key = normalizeKey(r);
-    if (!key) return;
+    const k = normalizeMatric(r);
+    if (!k) return;
 
-    if (!map.has(key)) map.set(key, {});
-    map.get(key).serial = r["serial number"] || r["Serial Number"] || "";
-    map.get(key).matric = key;
-    map.get(key).test = r["test score"] || r["Test Score"] || 0;
+    map.set(k, {
+      serial: r["serial number"] || r["Serial Number"] || "",
+      matric: k,
+      test: r["test score"] || r["Test Score"] || 0,
+      exam: 0
+    });
   });
 
   examData.forEach(r => {
-    const key = normalizeKey(r);
-    if (!key) return;
+    const k = normalizeMatric(r);
+    if (!k) return;
 
-    if (!map.has(key)) map.set(key, {});
-    map.get(key).serial = map.get(key).serial || r["serial number"] || r["Serial Number"] || "";
-    map.get(key).matric = key;
-    map.get(key).exam = r["exam score"] || r["Exam Score"] || 0;
+    if (!map.has(k)) {
+      map.set(k, {
+        serial: r["serial number"] || r["Serial Number"] || "",
+        matric: k,
+        test: 0,
+        exam: r["exam score"] || r["Exam Score"] || 0
+      });
+    } else {
+      map.get(k).exam = r["exam score"] || r["Exam Score"] || 0;
+    }
   });
 
   const output = Array.from(map.values()).map(r => ({
     "Serial Number": r.serial,
     "Matric Number": r.matric,
     "Test Score": r.test,
-    "Exam Score": r.exam
+    "Exam Score": r.exam,
+    "Total Score": Number(r.test) + Number(r.exam)
   }));
 
-  const worksheet = XLSX.utils.json_to_sheet(output);
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, "Results");
+  const ws = XLSX.utils.json_to_sheet(output);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Results");
 
-  XLSX.writeFile(workbook, "merged_results.xlsx");
+  XLSX.writeFile(wb, "merged_results.xlsx");
+}
+
+function clearFiles() {
+  testData = [];
+  examData = [];
+
+  document.getElementById("testFile").value = "";
+  document.getElementById("examFile").value = "";
+
+  alert("Cleared successfully.");
 }
 </script>
+
+</body>
+</html>
